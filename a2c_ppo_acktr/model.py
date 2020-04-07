@@ -13,12 +13,14 @@ class Flatten(nn.Module):
 
 
 class Policy(nn.Module):
-    def __init__(self, obs_shape, action_space, base=None, base_kwargs=None):
+    def __init__(self, obs_shape, action_space, base=None, base_kwargs=None, use_pnn = False):
         super(Policy, self).__init__()
         if base_kwargs is None:
             base_kwargs = {}
         if base is None:
-            if len(obs_shape) == 3:
+            if use_pnn:
+                base = PNNConvBase
+            elif len(obs_shape) == 3:
                 base = CNNBase
             elif len(obs_shape) == 1:
                 base = MLPBase
@@ -127,10 +129,10 @@ class NNBase(nn.Module):
             # Let's figure out which steps in the sequence have a zero for any agent
             # We will always assume t=0 has a zero in it as that makes the logic cleaner
             has_zeros = ((masks[1:] == 0.0) \
-                            .any(dim=-1)
-                            .nonzero()
-                            .squeeze()
-                            .cpu())
+                         .any(dim=-1)
+                         .nonzero()
+                         .squeeze()
+                         .cpu())
 
             # +1 to correct the masks[1:]
             if has_zeros.dim() == 0:
@@ -193,6 +195,120 @@ class CNNBase(NNBase):
             x, rnn_hxs = self._forward_gru(x, rnn_hxs, masks)
 
         return self.critic_linear(x), x, rnn_hxs
+
+
+class PNNLinearBlock(nn.Module):
+    def __init__(self, col, n_in, n_out):
+        super(PNNLinearBlock, self).__init__()
+        init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
+                               constant_(x, 0), nn.init.calculate_gain('relu'))
+
+        self.col = col
+        self.w = nn.Sequential(
+            init_(nn.Linear(n_in, n_out)), nn.ReLU())
+
+        self.u = nn.ModuleList()
+        self.u.extend([nn.Sequential(
+            init_(nn.Linear(n_in, n_out)), nn.ReLU()) for _ in range(col)])
+
+    def forward(self, inputs):
+        if not isinstance(inputs, list):
+            inputs = [inputs]
+
+        cur_col_out = self.w(inputs[-1])
+        prev_col_out = [mod(x) for mod, x in zip(self.u, inputs)]
+
+        return cur_col_out + sum(prev_col_out)
+
+
+class PNNConvBlock(nn.Module):
+    def __init__(self, col, n_in, n_out, filter_size, stride, flatten = False):
+        super(PNNConvBlock, self).__init__()
+        init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
+                               constant_(x, 0), nn.init.calculate_gain('relu'))
+        self.col = col
+        self.n_in = n_in
+        self.n_out = n_out
+        self.w = nn.Sequential(
+            init_(nn.Conv2d(n_in, n_out, filter_size, stride=stride)), nn.ReLU())
+
+        self.u = nn.ModuleList()
+        self.u.extend([nn.Sequential(
+            init_(nn.Conv2d(n_in, n_out, filter_size, stride=stride)), nn.ReLU()) for _ in range(col)])
+        self.flatten = flatten
+
+    def forward(self, inputs):
+        if not isinstance(inputs, list):
+            inputs = [inputs]
+
+        cur_col_out = self.w(inputs[-1])
+        prev_col_out = [mod(x) for mod, x in zip(self.u, inputs)]
+
+        out = cur_col_out + sum(prev_col_out)
+        if not self.flatten:
+            return out
+        else:
+            return Flatten()(out)
+
+
+class PNNConvBase(NNBase):
+    def __init__(self, num_inputs, recurrent=False, hidden_size=512):
+        super(PNNConvBase, self).__init__(recurrent, hidden_size, hidden_size)
+        self.columns = nn.ModuleList([])
+        self.num_inputs = num_inputs
+        self.hidden_size = hidden_size
+
+        init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
+                               constant_(x, 0))
+
+        self.critic_linear = init_(nn.Linear(self.hidden_size, 1))
+        self.train()
+
+    def forward(self, x, rnn_hxs, masks, task_id=-1):
+        assert self.columns, 'PNN should at least have one column (missing call to `new_task` ?)'
+        inputs = [c[0](x / 255.0) for c in self.columns]
+
+        n_layers = 4
+
+        for l in range(1, n_layers):
+            outputs = []
+
+            for i, column in enumerate(self.columns):
+                outputs.append(column[l](inputs[:i + 1]))
+
+            inputs = outputs
+
+        x = inputs[task_id]
+        if self.is_recurrent:
+            x, rnn_hxs = self._forward_gru(x, rnn_hxs, masks)
+
+        return self.critic_linear(x), x, rnn_hxs
+
+    def new_task(self):
+        task_id = len(self.columns)
+
+        new_column = nn.ModuleList([
+            PNNConvBlock(task_id, self.num_inputs, 32, 8, 4),
+            PNNConvBlock(task_id, 32, 64, 4, 2),
+            PNNConvBlock(task_id, 64, 32, 3, 1,flatten=True),
+            PNNLinearBlock(task_id, 32 * 7 * 7, self.hidden_size)])
+
+        self.columns.append(new_column)
+
+    def freeze_columns(self, skip=None):
+        if skip is None:
+            skip = []
+
+        for i,c in enumerate(self.columns):
+            if i not in skip:
+                for params in c.parameters():
+                    params.requires_grad = False
+
+    def parameters(self,col=None):
+        if col is None:
+            return super(PNNConvBase,self).parameters()
+
+        return self.columns[col].parameters()
 
 
 class MLPBase(NNBase):

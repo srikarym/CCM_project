@@ -6,7 +6,23 @@ import torch
 def get_args():
     parser = argparse.ArgumentParser(description='RL')
     parser.add_argument(
-        '--algo', default='a2c', help='algorithm to use: a2c | ppo | acktr')
+        '--algo', default='ppo', help='algorithm to use: a2c | ppo | acktr')
+
+    parser.add_argument(
+        '--use-pnn', default=False, action='store_true' , help= 'Use progressive neural network'
+    )
+
+    parser.add_argument(
+        '--n-columns',
+        default=1,
+        type=int,
+        help='Number of columns in PNN'
+    )
+
+    parser.add_argument(
+        '--pnn-paths',default=[], nargs='*', type=str
+    )
+
     parser.add_argument(
         '--gail',
         action='store_true',

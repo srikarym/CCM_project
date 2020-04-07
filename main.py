@@ -44,9 +44,23 @@ def main():
     actor_critic = Policy(
         envs.observation_space.shape,
         envs.action_space,
-        base_kwargs={'recurrent': args.recurrent_policy})
-    actor_critic.to(device)
+        base_kwargs={'recurrent': args.recurrent_policy},
+        use_pnn=args.use_pnn)
 
+
+    if args.use_pnn:
+        for _ in range(args.n_columns):
+            actor_critic.base.new_task()
+
+        assert args.n_columns - 1 == len(args.pnn_paths) , \
+            f'Please provide {args.n_columns - 1} paths for PNN trained models'
+
+        for i in range(args.n_columns-1):
+            utils.pnn_load_state_dict(actor_critic, i, args.pnn_paths[i])
+
+        actor_critic.base.freeze_columns(skip=[args.n_columns-1])
+
+    actor_critic.to(device)
     if args.algo == 'a2c':
         agent = algo.A2C_ACKTR(
             actor_critic,
