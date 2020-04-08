@@ -47,18 +47,17 @@ def main():
         base_kwargs={'recurrent': args.recurrent_policy},
         use_pnn=args.use_pnn)
 
-
     if args.use_pnn:
         for _ in range(args.n_columns):
             actor_critic.base.new_task()
 
-        assert args.n_columns - 1 == len(args.pnn_paths) , \
+        assert args.n_columns - 1 == len(args.pnn_paths), \
             f'Please provide {args.n_columns - 1} paths for PNN trained models'
 
-        for i in range(args.n_columns-1):
+        for i in range(args.n_columns - 1):
             utils.pnn_load_state_dict(actor_critic, i, args.pnn_paths[i])
 
-        actor_critic.base.freeze_columns(skip=[args.n_columns-1])
+        actor_critic.base.freeze_columns(skip=[args.n_columns - 1])
 
     actor_critic.to(device)
     if args.algo == 'a2c':
@@ -93,7 +92,7 @@ def main():
         file_name = os.path.join(
             args.gail_experts_dir, "trajs_{}.pt".format(
                 args.env_name.split('-')[0].lower()))
-        
+
         expert_dataset = gail.ExpertDataset(
             file_name, num_trajectories=4, subsample_frequency=20)
         drop_last = len(expert_dataset) > args.gail_batch_size
@@ -177,7 +176,7 @@ def main():
 
         # save for every interval-th episode or for the last epoch
         if (j % args.save_interval == 0
-                or j == num_updates - 1) and args.save_dir != "":
+            or j == num_updates - 1) and args.save_dir != "":
             save_path = os.path.join(args.save_dir, args.algo)
             try:
                 os.makedirs(save_path)
@@ -193,13 +192,13 @@ def main():
             total_num_steps = (j + 1) * args.num_processes * args.num_steps
             end = time.time()
             print(
-                "Updates {}, num timesteps {}, FPS {} \n Last {} training episodes: mean/median reward {:.1f}/{:.1f}, min/max reward {:.1f}/{:.1f}\n"
-                .format(j, total_num_steps,
-                        int(total_num_steps / (end - start)),
-                        len(episode_rewards), np.mean(episode_rewards),
-                        np.median(episode_rewards), np.min(episode_rewards),
-                        np.max(episode_rewards), dist_entropy, value_loss,
-                        action_loss))
+                "Updates {}, num timesteps {:,}, FPS {} \n Last {} training episodes: mean/median reward {:.1f}/{:.1f}, min/max reward {:.1f}/{:.1f}\n"
+                    .format(j, total_num_steps,
+                            int(total_num_steps / (end - start)),
+                            len(episode_rewards), np.mean(episode_rewards),
+                            np.median(episode_rewards), np.min(episode_rewards),
+                            np.max(episode_rewards), dist_entropy, value_loss,
+                            action_loss))
 
         if (args.eval_interval is not None and len(episode_rewards) > 1
                 and j % args.eval_interval == 0):

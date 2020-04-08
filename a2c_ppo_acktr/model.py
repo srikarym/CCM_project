@@ -13,7 +13,7 @@ class Flatten(nn.Module):
 
 
 class Policy(nn.Module):
-    def __init__(self, obs_shape, action_space, base=None, base_kwargs=None, use_pnn = False):
+    def __init__(self, obs_shape, action_space, base=None, base_kwargs=None, use_pnn=False):
         super(Policy, self).__init__()
         if base_kwargs is None:
             base_kwargs = {}
@@ -197,58 +197,58 @@ class CNNBase(NNBase):
         return self.critic_linear(x), x, rnn_hxs
 
 
-class PNNLinearBlock(nn.Module):
-    def __init__(self, col, n_in, n_out):
-        super(PNNLinearBlock, self).__init__()
+class ScaleLayer(nn.Module):
+
+    def __init__(self, init_value=1e-3):
+        super().__init__()
+        self.scale = nn.Parameter(torch.FloatTensor([init_value]))
+
+    def forward(self, x):
+        return x * self.scale
+
+
+class PNNColumn(NNBase):
+    def __init__(self, num_inputs, recurrent=False, hidden_size=512):
+        super(PNNColumn, self).__init__(recurrent, hidden_size, hidden_size)
+
         init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
                                constant_(x, 0), nn.init.calculate_gain('relu'))
 
-        self.col = col
-        self.w = nn.Sequential(
-            init_(nn.Linear(n_in, n_out)), nn.ReLU())
+        self.conv1 = init_(nn.Conv2d(num_inputs, 32, 8, stride=4))
+        self.conv2 = init_(nn.Conv2d(32, 64, 4, stride=2))
+        self.conv3 = init_(nn.Conv2d(64, 32, 3, stride=1))
+        self.fc = init_(nn.Linear(32 * 7 * 7, hidden_size))
 
-        self.u = nn.ModuleList()
-        self.u.extend([nn.Sequential(
-            init_(nn.Linear(n_in, n_out)), nn.ReLU()) for _ in range(col)])
+        self.relu = nn.ReLU()
+        self.flatten = Flatten()
 
-    def forward(self, inputs):
-        if not isinstance(inputs, list):
-            inputs = [inputs]
+        self.output_shapes = [32, 64, 32, 512]
+        self.input_shapes = [num_inputs, 32, 64, 32 * 49]
 
-        cur_col_out = self.w(inputs[-1])
-        prev_col_out = [mod(x) for mod, x in zip(self.u, inputs)]
+        self.topology = [
+            [4, 2],
+            [3, 1],
+            512
+        ]
 
-        return cur_col_out + sum(prev_col_out)
+    def layers(self, i, x):
+        if i == 0:
+            return self.relu(self.conv1(x))
+        elif i == 1:
+            return self.relu(self.conv2(x))
+        elif i == 2:
+            return self.relu(self.conv3(x))
+        elif i == 3:
+            return self.fc(self.flatten(x))
 
+    def forward(self, x):
 
-class PNNConvBlock(nn.Module):
-    def __init__(self, col, n_in, n_out, filter_size, stride, flatten = False):
-        super(PNNConvBlock, self).__init__()
-        init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
-                               constant_(x, 0), nn.init.calculate_gain('relu'))
-        self.col = col
-        self.n_in = n_in
-        self.n_out = n_out
-        self.w = nn.Sequential(
-            init_(nn.Conv2d(n_in, n_out, filter_size, stride=stride)), nn.ReLU())
+        outs = []
+        for i in range(4):
+            x = self.layers(i, x)
+            outs.append(x)
 
-        self.u = nn.ModuleList()
-        self.u.extend([nn.Sequential(
-            init_(nn.Conv2d(n_in, n_out, filter_size, stride=stride)), nn.ReLU()) for _ in range(col)])
-        self.flatten = flatten
-
-    def forward(self, inputs):
-        if not isinstance(inputs, list):
-            inputs = [inputs]
-
-        cur_col_out = self.w(inputs[-1])
-        prev_col_out = [mod(x) for mod, x in zip(self.u, inputs)]
-
-        out = cur_col_out + sum(prev_col_out)
-        if not self.flatten:
-            return out
-        else:
-            return Flatten()(out)
+        return outs
 
 
 class PNNConvBase(NNBase):
@@ -257,56 +257,122 @@ class PNNConvBase(NNBase):
         self.columns = nn.ModuleList([])
         self.num_inputs = num_inputs
         self.hidden_size = hidden_size
+        self.recurrent = recurrent
+        self.alpha = nn.ModuleList([])
+        self.V = nn.ModuleList([])
+        self.U = nn.ModuleList([])
+        self.flatten = Flatten()
 
         init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
                                constant_(x, 0))
 
         self.critic_linear = init_(nn.Linear(self.hidden_size, 1))
         self.train()
+        self.n_layers = 4
 
-    def forward(self, x, rnn_hxs, masks, task_id=-1):
+    def forward(self, x, rnn_hxs, masks):
         assert self.columns, 'PNN should at least have one column (missing call to `new_task` ?)'
-        inputs = [c[0](x / 255.0) for c in self.columns]
+        x = (x / 255.0)
 
-        n_layers = 4
+        col = None
+        U_V_a_h = None
 
-        for l in range(1, n_layers):
-            outputs = []
+        inputs = [self.columns[0].layers(0, x)]
 
-            for i, column in enumerate(self.columns):
-                outputs.append(column[l](inputs[:i + 1]))
+        for i in range(1, len(self.columns)):
+            inputs.append(self.columns[i](x)[1])
+
+        for l in range(1, self.n_layers):
+            outputs = [self.columns[0].layers(l, inputs[0])]
+            for c in range(1, len(self.columns)):
+
+                pre_col = inputs[c - 1]
+                col = inputs[c]
+
+                a = self.alpha[c - 1][l - 1]
+                a_h = F.relu(a(pre_col))
+
+                V = self.V[c - 1][l - 1]
+                V_a_h = F.relu(V(a_h))
+
+                U = self.U[c - 1][l - 1]
+
+                if l == self.n_layers - 1:
+                    V_a_h = self.flatten(V_a_h)
+                    U_V_a_h = U(V_a_h)
+                    out = F.relu(col + U_V_a_h)
+                    outputs.append(out)
+
+                else:
+                    U_V_a_h = U(V_a_h)
+                    out = F.relu(col + U_V_a_h)
+                    outputs.append(self.columns[c].layers(l + 1, out))
 
             inputs = outputs
 
-        x = inputs[task_id]
+        x = inputs[-1]
         if self.is_recurrent:
             x, rnn_hxs = self._forward_gru(x, rnn_hxs, masks)
 
         return self.critic_linear(x), x, rnn_hxs
 
     def new_task(self):
-        task_id = len(self.columns)
-
-        new_column = nn.ModuleList([
-            PNNConvBlock(task_id, self.num_inputs, 32, 8, 4),
-            PNNConvBlock(task_id, 32, 64, 4, 2),
-            PNNConvBlock(task_id, 64, 32, 3, 1,flatten=True),
-            PNNLinearBlock(task_id, 32 * 7 * 7, self.hidden_size)])
-
+        new_column = PNNColumn(self.num_inputs, self.recurrent, self.hidden_size)
         self.columns.append(new_column)
+
+        init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
+                               constant_(x, 0))
+
+        if len(self.columns) > 1:
+
+            pre_col, col = self.columns[-2], self.columns[-1]
+
+            a_list = []
+            V_list = []
+            U_list = []
+            for l in range(1, self.n_layers):
+                a = ScaleLayer(0.01)
+
+                map_in = pre_col.output_shapes[l - 1]
+                map_out = int(map_in / 2)
+                v = init_(nn.Conv2d(map_in, map_out, 1))
+
+                if l != self.n_layers - 1:  # conv -> conv, last layer
+
+                    cur_out = col.output_shapes[l]
+                    size, stride = pre_col.topology[l - 1]
+                    u = init_(nn.Conv2d(map_out, cur_out, size, stride=stride))
+
+                else:
+                    input_size = int(col.input_shapes[-1] / 2)
+                    hidden_size = self.hidden_size
+
+                    u = init_(nn.Linear(input_size, hidden_size))
+
+                a_list.append(a)
+                V_list.append(v)
+                U_list.append(u)
+
+            a_list = nn.ModuleList(a_list)
+            V_list = nn.ModuleList(V_list)
+            U_list = nn.ModuleList(U_list)
+
+            self.alpha.append(a_list)
+            self.V.append(V_list)
+            self.U.append(U_list)
 
     def freeze_columns(self, skip=None):
         if skip is None:
             skip = []
 
-        for i,c in enumerate(self.columns):
+        for i, c in enumerate(self.columns):
             if i not in skip:
                 for params in c.parameters():
                     params.requires_grad = False
 
-    def parameters(self,col=None):
+    def parameters(self, col=None):
         if col is None:
-            return super(PNNConvBase,self).parameters()
+            return super(PNNConvBase, self).parameters()
 
         return self.columns[col].parameters()
 

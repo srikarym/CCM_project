@@ -65,26 +65,17 @@ def cleanup_log_dir(log_dir):
             os.remove(f)
 
 
-def chunks(l, n):
-    """Yield n number of sequential chunks from l."""
-    d, r = divmod(len(l), n)
-    for i in range(n):
-        si = (d + 1) * (i if i < r else r) + d * (0 if i < r else i - r)
-        yield l[si:si + (d + 1 if i < r else d)]
-
-
 def pnn_load_state_dict(pnn, col_idx, path):
     ac, _ = torch.load(path)
 
     ac_sd = ac.base.state_dict()
 
     ac_keys = list(ac_sd.keys())
+
     ac_keys = [k for k in ac_keys if 'critic' not in k]
-    num_layers = len(pnn.base.columns[col_idx])
 
-    for i, c in enumerate(chunks(list(ac_keys), num_layers)):
-        keys_new = list(pnn.base.columns[col_idx][i].state_dict().keys())
-        keys_old = c
+    keys_new = list(pnn.base.columns[col_idx].state_dict().keys())
+    keys_old = ac_keys
 
-        new_dict = {k1: ac_sd[k2] for k1, k2 in zip(keys_new, keys_old)}
-        pnn.base.columns[col_idx][i].load_state_dict(new_dict)
+    new_dict = {k1: ac_sd[k2] for k1, k2 in zip(keys_new, keys_old)}
+    pnn.base.columns[col_idx].load_state_dict(new_dict)
