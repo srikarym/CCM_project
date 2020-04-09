@@ -40,7 +40,7 @@ def get_args():
     parser.add_argument(
         '--gail-epoch', type=int, default=5, help='gail epochs (default: 5)')
     parser.add_argument(
-        '--lr', type=float, default=7e-4, help='learning rate (default: 7e-4)')
+        '--lr', type=float, default=3e-4, help='learning rate (default: 3e-4)')
     parser.add_argument(
         '--eps',
         type=float,
@@ -111,13 +111,13 @@ def get_args():
     parser.add_argument(
         '--clip-param',
         type=float,
-        default=0.2,
-        help='ppo clip parameter (default: 0.2)')
+        default=0.1,
+        help='ppo clip parameter (default: 0.1)')
     parser.add_argument(
         '--log-interval',
         type=int,
-        default=10,
-        help='log interval, one log per n updates (default: 10)')
+        default=1,
+        help='log interval, one log per n updates (default: 1)')
     parser.add_argument(
         '--save-interval',
         type=int,

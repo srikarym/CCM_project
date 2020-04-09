@@ -274,20 +274,15 @@ class PNNConvBase(NNBase):
         assert self.columns, 'PNN should at least have one column (missing call to `new_task` ?)'
         x = (x / 255.0)
 
-        col = None
-        U_V_a_h = None
-
-        inputs = [self.columns[0].layers(0, x)]
-
-        for i in range(1, len(self.columns)):
-            inputs.append(self.columns[i](x)[1])
+        inputs = [self.columns[i].layers(0, x) for i in range(len(self.columns))]
 
         for l in range(1, self.n_layers):
             outputs = [self.columns[0].layers(l, inputs[0])]
             for c in range(1, len(self.columns)):
 
                 pre_col = inputs[c - 1]
-                col = inputs[c]
+
+                cur_out = self.columns[c].layers(l, inputs[c])
 
                 a = self.alpha[c - 1][l - 1]
                 a_h = F.relu(a(pre_col))
@@ -297,16 +292,16 @@ class PNNConvBase(NNBase):
 
                 U = self.U[c - 1][l - 1]
 
-                if l == self.n_layers - 1:
+                if l == self.n_layers - 1:    # FC layer
                     V_a_h = self.flatten(V_a_h)
                     U_V_a_h = U(V_a_h)
-                    out = F.relu(col + U_V_a_h)
+                    out = F.relu(cur_out + U_V_a_h)
                     outputs.append(out)
 
                 else:
-                    U_V_a_h = U(V_a_h)
-                    out = F.relu(col + U_V_a_h)
-                    outputs.append(self.columns[c].layers(l + 1, out))
+                    U_V_a_h = U(V_a_h)        #conv layers
+                    out = F.relu(cur_out + U_V_a_h)
+                    outputs.append(out)
 
             inputs = outputs
 

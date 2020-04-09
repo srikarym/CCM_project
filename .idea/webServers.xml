@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="9a4eb7f9-34fd-4a78-a858-a47d0530f201" name="cims" url="http://access.cims.nyu.edu">
+        <fileTransfer host="access.cims.nyu.edu" port="22" rootFolder="/misc/kcgscratch1/ChoGroup/srikar/ccm/CCM_project" accessType="SFTP">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+          <option name="port" value="22" />
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>
