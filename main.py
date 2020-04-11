@@ -41,10 +41,15 @@ def main():
     envs = make_vec_envs(args.env_name, args.seed, args.num_processes,
                          args.gamma, args.log_dir, device, False)
 
+    base_kwargs = {'recurrent': args.recurrent_policy}
+    if 'MiniGrid' in args.env_name and args.use_pnn:
+        base_kwargs['grid'] = True
+        base_kwargs['hidden_size'] = 64
+
     actor_critic = Policy(
         envs.observation_space.shape,
         envs.action_space,
-        base_kwargs={'recurrent': args.recurrent_policy},
+        base_kwargs=base_kwargs,
         use_pnn=args.use_pnn)
 
     if args.use_pnn:

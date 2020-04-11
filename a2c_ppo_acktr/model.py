@@ -197,6 +197,42 @@ class CNNBase(NNBase):
         return self.critic_linear(x), x, rnn_hxs
 
 
+class MLPBase(NNBase):
+    def __init__(self, num_inputs, recurrent=False, hidden_size=64):
+        super(MLPBase, self).__init__(recurrent, num_inputs, hidden_size)
+
+        if recurrent:
+            num_inputs = hidden_size
+
+        init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
+                               constant_(x, 0), np.sqrt(2))
+
+        self.actor = nn.Sequential(
+            init_(nn.Linear(num_inputs, hidden_size)), nn.Tanh(),
+            init_(nn.Linear(hidden_size, hidden_size)), nn.Tanh())
+
+        self.critic = nn.Sequential(
+            init_(nn.Linear(num_inputs, hidden_size)), nn.Tanh(),
+            init_(nn.Linear(hidden_size, hidden_size)), nn.Tanh())
+
+        self.critic_linear = init_(nn.Linear(hidden_size, 1))
+
+        self.train()
+
+    def forward(self, inputs, rnn_hxs, masks):
+        x = inputs
+
+        if self.is_recurrent:
+            x, rnn_hxs = self._forward_gru(x, rnn_hxs, masks)
+
+        hidden_critic = self.critic(x)
+        hidden_actor = self.actor(x)
+
+        return self.critic_linear(hidden_critic), hidden_actor, rnn_hxs
+
+
+##### Added for CCM  #######
+
 class ScaleLayer(nn.Module):
 
     def __init__(self, init_value=1e-3):
@@ -207,33 +243,38 @@ class ScaleLayer(nn.Module):
         return x * self.scale
 
 
-class PNNColumn(NNBase):
-    def __init__(self, num_inputs, recurrent=False, hidden_size=512):
-        super(PNNColumn, self).__init__(recurrent, hidden_size, hidden_size)
+class PNNBase(NNBase):
+    def __init__(self, t, recurrent=False, hidden_size=512):
+        super(PNNBase, self).__init__(recurrent, hidden_size, hidden_size)
 
         init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
                                constant_(x, 0), nn.init.calculate_gain('relu'))
 
-        self.conv1 = init_(nn.Conv2d(num_inputs, 32, 8, stride=4))
-        self.conv2 = init_(nn.Conv2d(32, 64, 4, stride=2))
-        self.conv3 = init_(nn.Conv2d(64, 32, 3, stride=1))
-        self.fc = init_(nn.Linear(32 * 7 * 7, hidden_size))
+        self.conv1 = init_(nn.Conv2d(t[0][0], t[0][1], t[0][2], stride=t[0][3]))
+        self.conv2 = init_(nn.Conv2d(t[1][0], t[1][1], t[1][2], stride=t[1][3]))
+        self.conv3 = init_(nn.Conv2d(t[2][0], t[2][1], t[2][2], stride=t[2][3]))
+        self.fc = init_(nn.Linear(t[3][0], t[3][1]))
+
+        self.mp = None
 
         self.relu = nn.ReLU()
         self.flatten = Flatten()
 
-        self.output_shapes = [32, 64, 32, 512]
-        self.input_shapes = [num_inputs, 32, 64, 32 * 49]
-
         self.topology = [
-            [4, 2],
-            [3, 1],
-            512
+            [t[1][2], t[1][3]],
+            [t[2][2], t[2][3]],
+            t[3][1]
         ]
+
+        self.output_shapes = [x[1] for x in t]
+        self.input_shapes = [x[0] for x in t]
 
     def layers(self, i, x):
         if i == 0:
-            return self.relu(self.conv1(x))
+            if not self.mp:
+                return self.relu(self.conv1(x))
+            else:
+                return self.mp(self.relu(self.conv1(x)))
         elif i == 1:
             return self.relu(self.conv2(x))
         elif i == 2:
@@ -242,7 +283,6 @@ class PNNColumn(NNBase):
             return self.fc(self.flatten(x))
 
     def forward(self, x):
-
         outs = []
         for i in range(4):
             x = self.layers(i, x)
@@ -251,8 +291,25 @@ class PNNColumn(NNBase):
         return outs
 
 
-class PNNConvBase(NNBase):
+class PNNColumnAtari(PNNBase):  # Use this for atari environments
     def __init__(self, num_inputs, recurrent=False, hidden_size=512):
+        t = [[num_inputs, 32, 8, 4], [32, 64, 4, 2], [64, 32, 3, 1], [32 * 7 * 7, hidden_size]]
+        # [n_input, n_output, fsize, stride] for c1, c2, c3 and [n_input, n_output] for FC
+
+        super(PNNColumnAtari, self).__init__(t, recurrent, hidden_size)
+
+
+class PNNColumnGrid(PNNBase):  # Use this for grid environments
+    def __init__(self, num_inputs, recurrent=False, hidden_size=64):
+        t = [[num_inputs, 16, 2, 1], [16, 32, 2, 1], [32, 64, 2, 1], [64, 64]]
+
+        super(PNNColumnGrid, self).__init__(t, recurrent, hidden_size)
+
+        self.mp = nn.MaxPool2d((2, 2))
+
+
+class PNNConvBase(NNBase):
+    def __init__(self, num_inputs, recurrent=False, grid=False, hidden_size=512):
         super(PNNConvBase, self).__init__(recurrent, hidden_size, hidden_size)
         self.columns = nn.ModuleList([])
         self.num_inputs = num_inputs
@@ -262,6 +319,7 @@ class PNNConvBase(NNBase):
         self.V = nn.ModuleList([])
         self.U = nn.ModuleList([])
         self.flatten = Flatten()
+        self.grid = grid
 
         init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
                                constant_(x, 0))
@@ -292,14 +350,14 @@ class PNNConvBase(NNBase):
 
                 U = self.U[c - 1][l - 1]
 
-                if l == self.n_layers - 1:    # FC layer
+                if l == self.n_layers - 1:  # FC layer
                     V_a_h = self.flatten(V_a_h)
                     U_V_a_h = U(V_a_h)
                     out = F.relu(cur_out + U_V_a_h)
                     outputs.append(out)
 
                 else:
-                    U_V_a_h = U(V_a_h)        #conv layers
+                    U_V_a_h = U(V_a_h)  # conv layers
                     out = F.relu(cur_out + U_V_a_h)
                     outputs.append(out)
 
@@ -311,8 +369,12 @@ class PNNConvBase(NNBase):
 
         return self.critic_linear(x), x, rnn_hxs
 
-    def new_task(self):
-        new_column = PNNColumn(self.num_inputs, self.recurrent, self.hidden_size)
+    def new_task(self):  # adds a new column to pnn
+        if self.grid:
+            new_column = PNNColumnGrid(self.num_inputs, self.recurrent, self.hidden_size)
+        else:
+            new_column = PNNColumnAtari(self.num_inputs, self.recurrent, self.hidden_size)
+
         self.columns.append(new_column)
 
         init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
@@ -356,7 +418,7 @@ class PNNConvBase(NNBase):
             self.V.append(V_list)
             self.U.append(U_list)
 
-    def freeze_columns(self, skip=None):
+    def freeze_columns(self, skip=None):  # freezes the weights of previous columns
         if skip is None:
             skip = []
 
@@ -372,35 +434,3 @@ class PNNConvBase(NNBase):
         return self.columns[col].parameters()
 
 
-class MLPBase(NNBase):
-    def __init__(self, num_inputs, recurrent=False, hidden_size=64):
-        super(MLPBase, self).__init__(recurrent, num_inputs, hidden_size)
-
-        if recurrent:
-            num_inputs = hidden_size
-
-        init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
-                               constant_(x, 0), np.sqrt(2))
-
-        self.actor = nn.Sequential(
-            init_(nn.Linear(num_inputs, hidden_size)), nn.Tanh(),
-            init_(nn.Linear(hidden_size, hidden_size)), nn.Tanh())
-
-        self.critic = nn.Sequential(
-            init_(nn.Linear(num_inputs, hidden_size)), nn.Tanh(),
-            init_(nn.Linear(hidden_size, hidden_size)), nn.Tanh())
-
-        self.critic_linear = init_(nn.Linear(hidden_size, 1))
-
-        self.train()
-
-    def forward(self, inputs, rnn_hxs, masks):
-        x = inputs
-
-        if self.is_recurrent:
-            x, rnn_hxs = self._forward_gru(x, rnn_hxs, masks)
-
-        hidden_critic = self.critic(x)
-        hidden_actor = self.actor(x)
-
-        return self.critic_linear(hidden_critic), hidden_actor, rnn_hxs

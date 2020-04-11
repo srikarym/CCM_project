@@ -44,7 +44,7 @@ In order to visualize the results use ```visualize.ipynb```.
 #### PPO Single column
 
 ```bash
-python main.py --env-name "PongNoFrameskip-v4"  --use-gae   --num-processes 8 --num-steps 128 --num-mini-batch 4  --use-linear-lr-decay 
+python main.py --env-name "PongNoFrameskip-v4" --use-pnn --use-gae   --num-processes 8 --num-steps 128 --num-mini-batch 4  --use-linear-lr-decay 
 ```
 
 #### Progressive neural network with 2 columns
@@ -52,3 +52,5 @@ python main.py --env-name "PongNoFrameskip-v4"  --use-gae   --num-processes 8 --
 ```bash
 python main.py --env-name "PongNoFrameskip-v4"  --use-pnn --n-columns 2 --pnn-paths "path_to_trained_model_from_previous_runs"  --use-gae   --num-processes 8 --num-steps 128 --num-mini-batch 4  --use-linear-lr-decay 
 ```
+
+Works with minigrid environments. Pass 'MiniGrid-xyz' (change this to environment's name) as the argument for --env-name

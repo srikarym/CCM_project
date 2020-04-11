@@ -4,6 +4,7 @@ import gym
 import numpy as np
 import torch
 from gym.spaces.box import Box
+from gym_minigrid.wrappers import *
 
 from baselines import bench
 from baselines.common.atari_wrappers import make_atari, wrap_deepmind
@@ -12,6 +13,7 @@ from baselines.common.vec_env.dummy_vec_env import DummyVecEnv
 from baselines.common.vec_env.shmem_vec_env import ShmemVecEnv
 from baselines.common.vec_env.vec_normalize import \
     VecNormalize as VecNormalize_
+from baselines.common.atari_wrappers import make_atari, wrap_deepmind, ScaledFloatFrame, ClipRewardEnv
 
 try:
     import dm_control2gym
@@ -28,6 +30,15 @@ try:
 except ImportError:
     pass
 
+def wrap_custom(env, clip_rewards=False, scale=True):
+    """Configure environment for Openai procgen.
+    """
+    if scale:
+        env = ScaledFloatFrame(env)
+    if clip_rewards:
+        env = ClipRewardEnv(env)
+    return env
+
 
 def make_env(env_id, seed, rank, log_dir, allow_early_resets):
     def _thunk():
@@ -36,6 +47,8 @@ def make_env(env_id, seed, rank, log_dir, allow_early_resets):
             env = dm_control2gym.make(domain_name=domain, task_name=task)
         else:
             env = gym.make(env_id)
+            # env = RGBImgPartialObsWrapper(env)  # Get pixel observations
+            env = ImgObsWrapper(env)
 
         is_atari = hasattr(gym.envs, 'atari') and isinstance(
             env.unwrapped, gym.envs.atari.atari_env.AtariEnv)
@@ -57,10 +70,11 @@ def make_env(env_id, seed, rank, log_dir, allow_early_resets):
             if len(env.observation_space.shape) == 3:
                 env = wrap_deepmind(env)
         elif len(env.observation_space.shape) == 3:
-            raise NotImplementedError(
-                "CNN models work only for atari,\n"
-                "please use a custom wrapper for a custom pixel input env.\n"
-                "See wrap_deepmind for an example.")
+            env = wrap_custom(env)
+            # raise NotImplementedError(
+            #     "CNN models work only for atari,\n"
+            #     "please use a custom wrapper for a custom pixel input env.\n"
+            #     "See wrap_deepmind for an example.")
 
         # If the input has shape (W,H,3), wrap for PyTorch convolutions
         obs_shape = env.observation_space.shape
