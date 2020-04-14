@@ -25,7 +25,7 @@ def main():
     args = get_args()
 
     experiment = Experiment(api_key="5vXC1Sb8w8AArpJfFnxthEXps",
-                            project_name="ccm-gridworld", workspace="srikarym")
+                            project_name="ccm-gridworld-new", workspace="srikarym")
     experiment.set_name(args.exp_name)
 
     torch.manual_seed(args.seed)
