@@ -24,6 +24,10 @@ def get_args():
     )
 
     parser.add_argument(
+        '--exp-name', default='new_exp', type=str
+    )
+
+    parser.add_argument(
         '--gail',
         action='store_true',
         default=False,

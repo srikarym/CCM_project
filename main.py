@@ -2,7 +2,8 @@ import copy
 import glob
 import os
 import time
-from collections import deque
+from collections import deque, OrderedDict
+from comet_ml import Experiment
 
 import gym
 import numpy as np
@@ -22,6 +23,10 @@ from evaluation import evaluate
 
 def main():
     args = get_args()
+
+    experiment = Experiment(api_key="5vXC1Sb8w8AArpJfFnxthEXps",
+                            project_name="ccm-gridworld", workspace="srikarym")
+    experiment.set_name(args.exp_name)
 
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
@@ -196,14 +201,19 @@ def main():
         if j % args.log_interval == 0 and len(episode_rewards) > 1:
             total_num_steps = (j + 1) * args.num_processes * args.num_steps
             end = time.time()
+
+            metrics = {'Updates':j, 'num timesteps': total_num_steps, 'FPS': total_num_steps//(end-start),
+                       'Episode rewards length':len(episode_rewards),
+                       'Mean reward':np.median(episode_rewards) , 'Median reward': np.median(episode_rewards),
+                       'Min reward':np.min(episode_rewards), 'Max reward': np.max(episode_rewards),
+                       'Dist entropy': dist_entropy, 'Value loss':value_loss, 'Action loss':action_loss}
+            v = list(metrics.values())
+
             print(
-                "Updates {}, num timesteps {:,}, FPS {} \n Last {} training episodes: mean/median reward {:.1f}/{:.1f}, min/max reward {:.1f}/{:.1f}\n"
-                    .format(j, total_num_steps,
-                            int(total_num_steps / (end - start)),
-                            len(episode_rewards), np.mean(episode_rewards),
-                            np.median(episode_rewards), np.min(episode_rewards),
-                            np.max(episode_rewards), dist_entropy, value_loss,
-                            action_loss))
+                "Updates {}, num timesteps {:,}, FPS {} \n Last {} episodes: mean/median reward {:.3f}/{:.3f}, "
+                "min/max reward {:.3f}/{:.3f}\n".format(*v))
+
+            experiment.log_metrics(metrics, epoch=j)
 
         if (args.eval_interval is not None and len(episode_rewards) > 1
                 and j % args.eval_interval == 0):

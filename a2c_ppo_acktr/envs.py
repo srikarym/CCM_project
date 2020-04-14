@@ -30,6 +30,7 @@ try:
 except ImportError:
     pass
 
+
 def wrap_custom(env, clip_rewards=False, scale=True):
     """Configure environment for Openai procgen.
     """
@@ -47,8 +48,9 @@ def make_env(env_id, seed, rank, log_dir, allow_early_resets):
             env = dm_control2gym.make(domain_name=domain, task_name=task)
         else:
             env = gym.make(env_id)
+            if 'Grid' in env_id:
+                env = ImgObsWrapper(env)
             # env = RGBImgPartialObsWrapper(env)  # Get pixel observations
-            
 
         is_atari = hasattr(gym.envs, 'atari') and isinstance(
             env.unwrapped, gym.envs.atari.atari_env.AtariEnv)
@@ -70,7 +72,7 @@ def make_env(env_id, seed, rank, log_dir, allow_early_resets):
             if len(env.observation_space.shape) == 3:
                 env = wrap_deepmind(env)
         elif len(env.observation_space.shape) == 3:
-            env = ImgObsWrapper(env)
+
             env = wrap_custom(env)
             # raise NotImplementedError(
             #     "CNN models work only for atari,\n"
@@ -235,7 +237,7 @@ class VecPyTorchFrameStack(VecEnvWrapper):
 
         if device is None:
             device = torch.device('cpu')
-        self.stacked_obs = torch.zeros((venv.num_envs, ) +
+        self.stacked_obs = torch.zeros((venv.num_envs,) +
                                        low.shape).to(device)
 
         observation_space = gym.spaces.Box(
