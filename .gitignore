@@ -108,3 +108,5 @@ trained_models/breakout_pnn
 trained_models/old
 trained_models/temp
 .fuse_hidden*
+generate_shell_script.py
+ppo_run.sh
