@@ -101,6 +101,9 @@ venv.bak/
 # mkdocs documentation
 /site
 
+trained_models/Seaquest/
+trained_models/Breakout/
+trained_models/Pong
 trained_models/breakout_pnn
 trained_models/old
 trained_models/temp
