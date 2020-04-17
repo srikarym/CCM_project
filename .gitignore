@@ -6,7 +6,11 @@ __pycache__/
 # C extensions
 *.so
 logs/
-
+slurm_logs/
+slurm_scripts/
+trained_models/gridworld_new
+trained_models/gridworld
+trained_models/gridworld_lrdecay
 # Distribution / packaging
 .Python
 build/

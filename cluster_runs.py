@@ -2,10 +2,10 @@ import os
 import random
 
 email = "msy290@nyu.edu"
-directory = "/misc/kcgscratch1/ChoGroup/srikar/ccm/CCM_project"
-exp = 'pnn_runs'
+directory = "/scratch/msy290/ccm/CCM_project_adaptivelr"
+exp_name = 'gridworld_more_seeds'
 
-run = f'{exp}'
+run = f'{exp_name}'
 
 slurm_logs = os.path.join(directory, "slurm_logs", run)
 slurm_scripts = os.path.join(directory, "slurm_scripts", run)
@@ -16,68 +16,40 @@ if not os.path.exists(slurm_scripts):
     os.makedirs(slurm_scripts)
 
 
-def train(flags, jobname=None, time=24):
-    jobcommand = "srun python3 -B  main.py "
+def train(flags, jobname=None, time=2):
+    jobcommand = "python3 -B  main.py "
     args = ["--%s %s" % (flag, str(flags[flag])) for flag in sorted(flags.keys())]
     jobcommand += " ".join(args)
 
     slurmfile = os.path.join(slurm_scripts, jobname + '.slurm')
     with open(slurmfile, 'w') as f:
         f.write("#!/bin/bash\n")
-        f.write("#SBATCH --job-name" + "=" + jobname + "\n")
+        f.write("#SBATCH --cpus-per-task=12\n")
         f.write("#SBATCH --output=%s\n" % os.path.join(slurm_logs, jobname + ".out"))
-        f.write("#SBATCH --qos=batch\n")
-        f.write("#SBATCH --cpus-per-task=8\n")
-        f.write("source /misc/kcgscratch1/ChoGroup/srikar/db_env/bin/activate\n")
-        f.write("module load cuda-10.0\n")
-        f.write('module load gcc-8.2\n')
-        f.write("module load gcc-9.1\n")
-        f.write('export NCCL_DEBUG=INFO\n')
-        f.write('export MASTER_PORT=$((12000 + RANDOM % 20000))\n')
-        f.write('export NCCL_DEBUG=INFO\n')
-        f.write('export PYTHONFAULTHANDLER=1\n')
+        f.write('module load gcc/9.1.0\n')
 
         f.write(jobcommand + "\n")
 
-    s = "sbatch --qos batch --gres=gpu:1 --constraint='gpu_12gb' --nodes=1 "
-    s += "--mem=60GB --time=%d:00:00 %s &" % (
+    s = "sbatch  --gres=gpu:1 "
+    s += "--mem=80GB --time=%d:00:00 %s &" % (
         time, os.path.join(slurm_scripts, jobname + ".slurm"))
     os.system(s)
 
 
-job = {
-    "algo": 'ppo', "num-processes": 64, "num-steps": 128,
-    'num-mini-batch': 4, 'log-interval': 1,
-    'use-linear-lr-decay': '', 'use-gae': '', 'n-columns': 2,
-    'clip-param': 0.1, 'value-loss-coef': 0.5, 'use-pnn': '',
-}
+args = {'num-steps': 128, 'num-mini-batch': 4, 'lr': 0.0005, 'algo': 'ppo','use-gae':'',
+        'num-processes': 16, 'log-interval': 1, 'use-pnn': '','num-env-steps':int(10**7),
+        'use-linear-lr-decay':''}
 
-time = 48
-
-target_env = 'BreakoutNoFrameskip-v4'
-source_envs_list = ['Pong', 'Seaquest']
-
-for source_env in source_envs_list:
-
-    for seed in [0, 1, 2, 3]:
-
-        j = {k: v for k, v in job.items()}
-
-        j['env-name'] = target_env
-
-        if source_env == 'both':
-            j['n-columns'] = 3
-            j['pnn-paths'] = f'trained_models/Pong/{seed}/ppo/PongNoFrameskip-v4.pt ' + \
-                             f'trained_models/Seaquest/{seed}/ppo/SeaquestNoFrameskip-v4.pt '
-
-        else:
-            j['pnn-paths'] = f'trained_models/{source_env}/{seed}/ppo/{source_env}NoFrameskip-v4.pt '
-
+for grid_size in [5,6,8,16,32]:
+    for seed in range(10):
+        j = {k: v for k, v in args.items()}
+        j['env-name'] = f'MiniGrid-Empty-{grid_size}x{grid_size}-v0'
         j['seed'] = seed
+        j['log-dir'] = f'./logs/{exp_name}/{grid_size}/ppo-{seed}'
+        j['save-dir'] = f'./trained_models/{exp_name}/{grid_size}/ppo-{seed}'
+        j['exp-name'] = f'{grid_size}_seed{seed}'
 
-        jobname = f'pnn_{source_env}_{seed}'
-        j['log-dir'] = f'logs/Breakout/pnn_{source_env}/{seed}'
-        j['save-dir'] = f'trained_models/Breakout/pnn_{source_env}/{seed}'
+        jobname = f'{grid_size}_{seed}'
+        train(j, jobname)
 
-        train(j, jobname=jobname, time=time)
 

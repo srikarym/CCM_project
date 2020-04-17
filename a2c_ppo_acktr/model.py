@@ -305,7 +305,15 @@ class PNNColumnGrid(PNNBase):  # Use this for grid environments
 
         super(PNNColumnGrid, self).__init__(t, recurrent, hidden_size)
 
+        init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
+                               constant_(x, 0), nn.init.calculate_gain('relu'))
+
         self.mp = nn.MaxPool2d((2, 2))
+        self.fc  = nn.Sequential(
+            init_(nn.Linear(hidden_size, 64)),
+            nn.Tanh(),
+            self.fc
+        )
 
 
 class PNNConvBase(NNBase):
@@ -324,7 +332,16 @@ class PNNConvBase(NNBase):
         init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
                                constant_(x, 0))
 
-        self.critic_linear = init_(nn.Linear(self.hidden_size, 1))
+        if grid:
+            self.critic_linear = nn.Sequential(
+                init_(nn.Linear(self.hidden_size, 64)),
+                nn.Tanh(),
+                init_(nn.Linear(64, 1))
+            )
+        else:
+            self.critic_linear = init_(nn.linear(self.hidden_size,1))
+        
+
         self.train()
         self.n_layers = 4
 
