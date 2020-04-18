@@ -5,14 +5,17 @@ __pycache__/
 .idea/
 # C extensions
 *.so
-logs/
 slurm_logs/
 slurm_scripts/
 trained_models/gridworld_new
 trained_models/gridworld
 trained_models/gridworld_lrdecay
 # Distribution / packaging
+logs/gridworld/
+logs/gridworld_lrdecay/
+trained_models/
 .Python
+
 build/
 develop-eggs/
 dist/
