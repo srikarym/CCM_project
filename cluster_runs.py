@@ -3,7 +3,7 @@ import random
 
 email = "msy290@nyu.edu"
 directory = "/scratch/msy290/ccm/CCM_project_adaptivelr"
-exp_name = 'Unlock'
+exp_name = 'Doorkey'
 
 run = f'{exp_name}'
 
@@ -36,27 +36,26 @@ def train(flags, jobname=None, time=2):
     os.system(s)
 
 
-args = {'num-steps': 128, 'num-mini-batch': 4, 'lr': 0.0005, 'algo': 'ppo','use-gae':'',
-        'num-processes': 16, 'log-interval': 1, 'use-pnn': '','num-env-steps':int(10**7),
-        'use-linear-lr-decay':''}
+args = {'num-steps': 128, 'num-mini-batch': 4,  'algo': 'ppo','use-gae':'',
+        'num-processes': 16, 'log-interval': 1, 'use-pnn': '','num-env-steps':int(10**7)}
 
 
 
 #Training PNNs with 2 columns, only choosing optimal models trained on source task
 
-# sg_sizes = {8:[5,6], 16: [5,6,8], 32: [5,6,8,16]}
-# optimal_seeds ={5:[0,1,2,3,4,5,6,8,9], 
-#                 6: [1,4,6,7,8],
-#                 8: [2,3,6],
-#                 16: [0,1,3,5]}
+sg_sizes = {8:[8], 5: [5], 16: [16]}
+optimal_seeds ={5:[0,1,2,3,4,5,6,8,9], 
+                6: [1,4,6,7,8],
+                8: [2,3,6],
+                16: [0,1,3,5]}
 
 
 # for grid_size in sg_sizes.keys():
 #     for sg in sg_sizes[grid_size]:
-#         for seed in range(10):
+#         for seed in range(3):
 #             sg_seed = random.choice(optimal_seeds[sg])
 #             j = {k: v for k, v in args.items()}
-#             j['env-name'] = f'MiniGrid-Empty-{grid_size}x{grid_size}-v0'
+#             j['env-name'] = f'MiniGrid-DoorKey-{grid_size}x{grid_size}-v0'
 #             j['seed'] = seed
 #             j['log-dir'] = f'./logs/{exp_name}/{grid_size}/pnn_{sg}-{seed}'
 #             j['save-dir'] = f'./trained_models/{exp_name}/{grid_size}/pnn_{sg}-{seed}'
@@ -71,26 +70,15 @@ args = {'num-steps': 128, 'num-mini-batch': 4, 'lr': 0.0005, 'algo': 'ppo','use-
 
 #Training 1 column networks
 
-# for grid_size in [5,6,8]:
-#     for seed in range(3):
-#         j = {k: v for k, v in args.items()}
-#         j['env-name'] = f'MiniGrid-DoorKey-{grid_size}x{grid_size}-v0'
-#         j['seed'] = seed
-#         j['log-dir'] = f'./logs/{exp_name}/{grid_size}/ppo-{seed}'
-#         j['save-dir'] = f'./trained_models/{exp_name}/{grid_size}/ppo-{seed}'
-#         j['exp-name'] = f'{grid_size}_seed{seed}'
+for grid_size in [5]:
+    for seed in range(3):
+        j = {k: v for k, v in args.items()}
+        j['env-name'] = f'MiniGrid-DoorKey-{grid_size}x{grid_size}-v0'
+        j['seed'] = seed
+        j['log-dir'] = f'./logs/{exp_name}/{grid_size}/ppo-{seed}'
+        j['save-dir'] = f'./trained_models/{exp_name}/{grid_size}/ppo-{seed}'
+        j['exp-name'] = f'{grid_size}_seed{seed}'
 
-#         jobname = f'{grid_size}_{seed}'
-#         train(j, jobname)
+        jobname = f'{grid_size}_{seed}'
+        train(j, jobname)
 
-
-for seed in range(3):
-    j = {k: v for k, v in args.items()}
-    j['env-name'] = f'MiniGrid-Unlock-v0'
-    j['seed'] = seed
-    j['log-dir'] = f'./logs/{exp_name}/ppo-{seed}'
-    j['save-dir'] = f'./trained_models/{exp_name}/ppo-{seed}'
-    j['exp-name'] = f'{exp_name}_seed{seed}'
-
-    jobname = f'{seed}'
-    train(j, jobname)

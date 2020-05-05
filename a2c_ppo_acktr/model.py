@@ -347,7 +347,7 @@ class PNNConvBase(NNBase):
 
     def forward(self, x, rnn_hxs, masks):
         assert self.columns, 'PNN should at least have one column (missing call to `new_task` ?)'
-        x = (x / 255.0)
+        # x = (x / 255.0)
 
         inputs = [self.columns[i].layers(0, x) for i in range(len(self.columns))]
 

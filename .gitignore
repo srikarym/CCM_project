@@ -15,6 +15,7 @@ logs/gridworld/
 logs/gridworld_lrdecay/
 trained_models/
 .Python
+logs/
 
 build/
 develop-eggs/
